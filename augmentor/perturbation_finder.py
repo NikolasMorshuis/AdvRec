@@ -11,7 +11,7 @@ from fastmri.losses import SSIMLoss
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity, mean_squared_error
 
 
-class adversarial_training(object):
+class PerturbationFinder(object):
     def __init__(self, transform_list, input_from_kspace, loss='MSE'):
         self.transforms = transform_list
         if loss == 'MSE' or loss == 'MSE+SSIM':
@@ -22,7 +22,7 @@ class adversarial_training(object):
         self.input_from_kspace = input_from_kspace
 
     def transform_kspace_rotation(self, kspace, model, mask, eckpoints, rot_ratio=1, used_model='unet',
-                                            acq=None, num_low_frequencies=None, relevant_only=True, step_size=0.1):
+                                  acq=None, num_low_frequencies=None, relevant_only=True, step_size=0.1):
         """
         grid search through several rotation-angles, calculates the resp scores and returns the scores together with
         the worst-case transformed k-space.
@@ -38,7 +38,7 @@ class adversarial_training(object):
         mask_unsqueezed = torch.unsqueeze(mask, 0)
 
         # for if we want to start from several angles:
-        angles = np.round(np.arange(-rot_ratio*180, rot_ratio*180, step_size), 2)
+        angles = np.round(np.arange(-rot_ratio * 180, rot_ratio * 180, step_size), 2)
         angles = angles[1:]
         iterations = angles
 
@@ -91,24 +91,26 @@ class adversarial_training(object):
                     output = output.unsqueeze(0)
                 output_backward = transform.backward(output)
                 rotation_mask_backwarded = transform.backward(rotation_forwarded)
-                output_center = TF.center_crop(output_backward, [320,320])
-                rotation_mask_center = TF.center_crop(rotation_mask_backwarded, [320,320])
+                output_center = TF.center_crop(output_backward, [320, 320])
+                rotation_mask_center = TF.center_crop(rotation_mask_backwarded, [320, 320])
 
-                seen_pixels = torch.isclose(rotation_mask_center,torch.tensor(1).float())
+                seen_pixels = torch.isclose(rotation_mask_center, torch.tensor(1).float())
                 if used_model == 'unet':
                     output_center = unnormalize(output_center, mean, std)
 
                 output_center_ssim = output_center.cpu().detach().numpy()
                 if relevant_only:
-                    output_center_relreg = output_center_ssim[0,0,y0_int:y1_int, x0_int:x1_int]
+                    output_center_relreg = output_center_ssim[0, 0, y0_int:y1_int, x0_int:x1_int]
                 else:
-                    output_center_relreg = output_center_ssim[0,0]
-                ssim_loss = structural_similarity(target_ssim_relreg, output_center_relreg, data_range=target_ssim.max()-target_ssim.min())
-                psnr_loss = peak_signal_noise_ratio(target_ssim_relreg, output_center_relreg, data_range=target_ssim.max()-target_ssim.min())
+                    output_center_relreg = output_center_ssim[0, 0]
+                ssim_loss = structural_similarity(target_ssim_relreg, output_center_relreg,
+                                                  data_range=target_ssim.max() - target_ssim.min())
+                psnr_loss = peak_signal_noise_ratio(target_ssim_relreg, output_center_relreg,
+                                                    data_range=target_ssim.max() - target_ssim.min())
                 mse_loss = mean_squared_error(target_ssim_relreg, output_center_relreg)
 
                 print('loss: {}'.format(ssim_loss))
-                angle=transform.param
+                angle = transform.param
                 print('angle ', angle)
                 angle_array.append(angle)
                 loss_array.append(ssim_loss)
@@ -136,8 +138,8 @@ class adversarial_training(object):
         return masked_kspace, target_image, transformed_target, final_angles, loss_array, psnr_array, mse_array, best_angle
 
     def transform_kspace_noise(self, kspace, model, mask, mask2,
-                                                num_low_frequencies=None, used_model='unet', acq=None, relative_error=0,
-                                                relevant_only=True, position=None, n_iter=5):
+                               num_low_frequencies=None, used_model='unet', acq=None, relative_error=0,
+                               relevant_only=True, position=None, n_iter=5):
         """
         This model tries to find the worst perturbation within the boundaries of the transforms in self.transforms
 
@@ -160,7 +162,7 @@ class adversarial_training(object):
             x0, y0, w, h = position
         print('start adversarial attack:')
         data_size = kspace.size()
-        kspace_norms = torch.linalg.vector_norm(kspace, ord=2, dim=[-1,-2])
+        kspace_norms = torch.linalg.vector_norm(kspace, ord=2, dim=[-1, -2])
         loss_array = []
         mask_unsqueezed = torch.unsqueeze(mask, 0)
         orig_image = orig_kspace_to_images(kspace)
@@ -169,17 +171,17 @@ class adversarial_training(object):
         mask = torch.permute(mask, (0, 1, 3, 2))
         transform = self.transforms[0]
         transform.acq = acq
-        for i in range(n_iter+1):
+        for i in range(n_iter + 1):
             if i == 0:
-                __ = transform.init_parameters(data_size, kspace_norms*relative_error)
-            transform.train() # params need to get the gradient
+                __ = transform.init_parameters(data_size, kspace_norms * relative_error)
+            transform.train()  # params need to get the gradient
             transformed_kspace = transform.forward(kspace)
             unders_kspace = transformed_kspace * mask
             if i == n_iter:
                 # We have the undersampled transformed kspace, so we can stop here already.
                 break
             model_input, mean, std = self.input_from_kspace.make_model_input(unders_kspace)
-            loss_target = TF.center_crop(target_image, [320,320])
+            loss_target = TF.center_crop(target_image, [320, 320])
             if relative_error == 0:
                 # We do not need to start the adversarial attack, since there won't be one
                 break
@@ -195,17 +197,18 @@ class adversarial_training(object):
                 if relevant_only:
                     if self.loss_name == 'MSE' or self.loss_name == 'MSE+SSIM':
                         loss1 = self.loss1(torch.abs(output_center)[mask2],
-                            torch.abs(loss_target)[mask2[0]])
+                                           torch.abs(loss_target)[mask2[0]])
                     if self.loss_name == 'SSIM' or self.loss_name == 'MSE+SSIM':
                         # We need to keep the structural information here
-                        loss2 = self.loss2(torch.abs(loss_target)[:,y0:y0+h, x0:x0+w],
-                                            torch.abs(output_center)[:,:,y0:y0+h, x0:x0+w],
-                                            torch.full([1], loss_target.max()).cuda())
+                        loss2 = self.loss2(torch.abs(loss_target)[:, y0:y0 + h, x0:x0 + w],
+                                           torch.abs(output_center)[:, :, y0:y0 + h, x0:x0 + w],
+                                           torch.full([1], loss_target.max()).cuda())
                 else:
                     if self.loss_name == 'MSE' or self.loss_name == 'MSE+SSIM':
                         loss1 = self.loss1(torch.abs(output_center), torch.abs(loss_target))
                     if self.loss_name == 'SSIM' or self.loss_name == 'MSE+SSIM':
-                        loss2 = self.loss2(torch.abs(loss_target), torch.abs(output_center), torch.full([1], loss_target.max()).cuda())
+                        loss2 = self.loss2(torch.abs(loss_target), torch.abs(output_center),
+                                           torch.full([1], loss_target.max()).cuda())
                 if self.loss_name == 'MSE':
                     loss = loss1
                 elif self.loss_name == 'SSIM':
@@ -213,7 +216,7 @@ class adversarial_training(object):
                 elif self.loss_name == 'MSE+SSIM':
                     if i == 0:
                         mse_baseline = torch.abs(loss1.detach().clone().requires_grad_(False))
-                    loss = loss1/mse_baseline + loss2
+                    loss = loss1 / mse_baseline + loss2
                 print('loss: {}'.format(loss.item()))
                 loss.backward()
                 transform.optimize_parameters(step_size=0.5, mask=mask)

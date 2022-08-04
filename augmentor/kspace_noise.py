@@ -9,7 +9,7 @@ def unit_normalize(d, ord=2):
 
     # We only renormalize the tensor if the norm is larger than 1
     norm = torch.where(norm < torch.tensor(1).float().cuda(), torch.tensor(1).float().cuda(), norm)
-    d = d/(norm+1e-20)
+    d = d / (norm + 1e-20)
     return d
 
 
@@ -35,7 +35,7 @@ class KSpaceNoise:
         self.epsilon = config_dict['epsilon']
         self.power_iteration = power_iteration
         self.was_initialized = False
-        self.ord = config_dict['attack_mode'] # l1-attack (1), l2-attack (2), l_inf-attack ('inf')
+        self.ord = config_dict['attack_mode']  # l1-attack (1), l2-attack (2), l_inf-attack ('inf')
         self.kspace_norms = None
         self.acq = None
 
@@ -60,9 +60,9 @@ class KSpaceNoise:
 
         # Gaussian noise
         noise_real = torch.randn(
-                *data_size, device=self.device, dtype=torch.float32)
+            *data_size, device=self.device, dtype=torch.float32)
         noise_imag = torch.randn(
-                     *data_size, device=self.device, dtype=torch.float32)
+            *data_size, device=self.device, dtype=torch.float32)
 
         noise = torch.concat((noise_real.unsqueeze(-1), noise_imag.unsqueeze(-1)), dim=-1)
 
@@ -94,18 +94,18 @@ class KSpaceNoise:
         if step_size is not None:
             self.step_size = step_size
         if ord is None:
-            ord=self.ord
+            ord = self.ord
 
         # we can try to add the normalized grad to params
         grad = self.param.grad.detach()
-        param = self.param/la.vector_norm(self.param)+step_size*grad/la.vector_norm(grad)
+        param = self.param / la.vector_norm(self.param) + step_size * grad / la.vector_norm(grad)
         self.param = param.detach()
 
         # Non-essential, just interesting if you want to check how you can perturb the data without changing the
         # reconstruction algorithm (only perturb the data that is not sampled)
         if mask is not None and self.masked_data_only:
             if mask.shape[-1] != self.param.shape[-1]:
-                mask = torch.permute(mask, (0,1,3,2))
+                mask = torch.permute(mask, (0, 1, 3, 2))
             self.param = self.param * ~mask
         if self.acq is not None:
             self.param[:, :, :, :self.acq[0]] = 0

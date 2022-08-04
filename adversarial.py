@@ -17,12 +17,11 @@ from utils.utils import Transform_kspace_to_modelinput, error_per_angle
 
 from augmentor.adv_rotation import AdvRotation
 from augmentor.kspace_noise import KSpaceNoise
-from augmentor.perturbation_finder import adversarial_training
+from augmentor.perturbation_finder import PerturbationFinder
 from torchvision.transforms.functional import center_crop
 from data.transforms import unnormalize
 
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
-
 
 from utils.utils import orig_kspace_to_images, get_elements_with_pathology
 
@@ -35,6 +34,7 @@ MODEL_FNAMES = {
     "varnet_knee_mc": "knee_leaderboard_state_dict.pt",
     "varnet_brain_mc": "brain_leaderboard_state_dict.pt",
 }
+
 
 def main():
     pl.seed_everything(42)
@@ -56,7 +56,6 @@ def main():
 
     state_dict_file = None
 
-
     for c_model, used_model in enumerate(used_model_array):
         get_model_input_from_kspace = Transform_kspace_to_modelinput(used_model)
         if not os.path.isdir('./model_dir'):
@@ -77,7 +76,7 @@ def main():
                 model_path = './model_dir/{}'.format(MODEL_FNAMES['unet_knee_mc'])
                 if not os.path.isfile(model_path):
                     url_root = UNET_FOLDER
-                    download_model(url_root+MODEL_FNAMES['unet_knee_mc'], model_path)
+                    download_model(url_root + MODEL_FNAMES['unet_knee_mc'], model_path)
                 state_dict_file = model_path
 
         elif used_model == 'varnet':
@@ -96,7 +95,7 @@ def main():
                 model_path = './model_dir/{}'.format(MODEL_FNAMES['varnet_knee_mc'])
                 if not os.path.isfile(model_path):
                     url_root = VARNET_FOLDER
-                    download_model(url_root+MODEL_FNAMES['varnet_knee_mc'], model_path)
+                    download_model(url_root + MODEL_FNAMES['varnet_knee_mc'], model_path)
                 state_dict_file = model_path
 
         checkpoint = torch.load(state_dict_file)
@@ -120,7 +119,8 @@ def main():
         )
 
         df = pd.read_csv('./.annotation_cache/knee640500fb.csv')
-        patholo_indices, patients_with_patholo = get_elements_with_pathology(df, annotated_slice_dataset.examples, False)
+        patholo_indices, patients_with_patholo = get_elements_with_pathology(df, annotated_slice_dataset.examples,
+                                                                             False)
 
         if used_transform == 'rotation':
             rot_ratio = 0.1  # 0.1 should be equivalent to 18 degrees
@@ -139,15 +139,15 @@ def main():
             augmentor_noise = KSpaceNoise(config_dict=config_dict)
             transformation_chain = [augmentor_noise]
 
-        solver = adversarial_training(
+        solver = PerturbationFinder(
             transform_list=transformation_chain,
             input_from_kspace=get_model_input_from_kspace,
-            loss = loss_name
+            loss=loss_name
         )
 
         if used_transform == 'rotation':
             all_angles_losses = []
-            relative_errors = [5/180]  # 5 degree
+            relative_errors = [5 / 180]  # 5 degree
         else:
             # relative to the l2-norm of the coil, e.g. for 0.01 the ||z_i||_2 = 0.01 ||k_i||_2
             relative_errors = np.array([0, 0.002, 0.005, 0.01, 0.015, 0.02, 0.025])
@@ -173,7 +173,7 @@ def main():
             magnitude_target = torch.abs(complex_target)
             target_image = center_crop(magnitude_target, [320, 320])
 
-            labels_for_slice = df[(df['file']==data.fname.split('.')[0]) & (df['slice'] == data.slice_num)]
+            labels_for_slice = df[(df['file'] == data.fname.split('.')[0]) & (df['slice'] == data.slice_num)]
             kspace = data.masked_kspace.unsqueeze(0).cuda()
 
             for label in labels_for_slice.values:
@@ -204,22 +204,25 @@ def main():
                         rot_ratio = k
                         assert rot_ratio > 0, 'rot_ratio has to be larger than 0'
                         # we could also include a relevant only parameter in rotation
-                        transformed_kspace, target, transformed_target, final_angles, loss_array, psnr_array, mse_array, best_angle = solver.transform_kspace_rotation(kspace,
-                                network, mask, eckpoints=[x0, x1, y0, y1], rot_ratio=rot_ratio,
-                                used_model=used_model, acq=acq, num_low_frequencies=num_low_frequencies, relevant_only=relevant_only)
+                        transformed_kspace, target, transformed_target, final_angles, loss_array, psnr_array, mse_array, best_angle = solver.transform_kspace_rotation(
+                            kspace,
+                            network, mask, eckpoints=[x0, x1, y0, y1], rot_ratio=rot_ratio,
+                            used_model=used_model, acq=acq, num_low_frequencies=num_low_frequencies,
+                            relevant_only=relevant_only)
                         all_angles_losses.append(loss_array)
                     elif used_transform == 'noise':
                         relative_error = k
                         transformed_kspace = \
-                        solver.transform_kspace_noise(kspace, network, mask, mask2, num_low_frequencies=num_low_frequencies,
-                                                      used_model=used_model, acq=acq, relative_error=relative_error,
-                                                      relevant_only=relevant_only, position=position, n_iter=10)
+                            solver.transform_kspace_noise(kspace, network, mask, mask2,
+                                                          num_low_frequencies=num_low_frequencies,
+                                                          used_model=used_model, acq=acq, relative_error=relative_error,
+                                                          relevant_only=relevant_only, position=position, n_iter=10)
 
                     model_input, mean, std = get_model_input_from_kspace.make_model_input(transformed_kspace)
                     if used_model == 'unet':
                         output = network(model_input)
                         output_cropped = center_crop(output, [320, 320])
-                        output_orig = unnormalize(output_cropped, mean, std)[0,0].cpu().detach().numpy()
+                        output_orig = unnormalize(output_cropped, mean, std)[0, 0].cpu().detach().numpy()
 
                     elif used_model == 'varnet':
                         output = network(model_input, torch.unsqueeze(mask, 0), num_low_frequencies)
@@ -231,8 +234,10 @@ def main():
 
                     output_ssim = output_orig
                     output_ssim_relreg = output_ssim[y0:y1, x0:x1]
-                    ssim_score = structural_similarity(target_ssim_relreg, output_ssim_relreg, data_range=target_ssim.max()-target_ssim.min())
-                    psnr_score = peak_signal_noise_ratio(target_ssim_relreg, output_ssim_relreg, data_range=target_ssim.max()-target_ssim.min())
+                    ssim_score = structural_similarity(target_ssim_relreg, output_ssim_relreg,
+                                                       data_range=target_ssim.max() - target_ssim.min())
+                    psnr_score = peak_signal_noise_ratio(target_ssim_relreg, output_ssim_relreg,
+                                                         data_range=target_ssim.max() - target_ssim.min())
                     if used_transform == 'rotation':
                         target_angles = [0, 1, 2, 3, 4, 5]
                         ssim_score_array, psnr_score_array, mse_score_array = error_per_angle(
@@ -264,16 +269,21 @@ def main():
         if not os.path.isdir('./results'):
             os.makedirs('./results')
         if relevant_only:
-            df_ssim.to_csv('./results/ssim_scores_{}_{}_{}x_{}.csv'.format(used_model, addition, args.accelerations[0], loss_name))
-            df_psnr.to_csv('./results/psnr_scores_{}_{}_{}x_{}.csv'.format(used_model, addition, args.accelerations[0], loss_name))
+            df_ssim.to_csv(
+                './results/ssim_scores_{}_{}_{}x_{}.csv'.format(used_model, addition, args.accelerations[0], loss_name))
+            df_psnr.to_csv(
+                './results/psnr_scores_{}_{}_{}x_{}.csv'.format(used_model, addition, args.accelerations[0], loss_name))
         else:
-            df_ssim.to_csv('./results/ssim_scores_{}_complimage_{}_{}x_{}.csv'.format(used_model, addition, args.accelerations[0], loss_name))
-            df_psnr.to_csv('./results/psnr_scores_{}_complimage_{}_{}x_{}.csv'.format(used_model, addition, args.accelerations[0], loss_name))
+            df_ssim.to_csv(
+                './results/ssim_scores_{}_complimage_{}_{}x_{}.csv'.format(used_model, addition, args.accelerations[0],
+                                                                           loss_name))
+            df_psnr.to_csv(
+                './results/psnr_scores_{}_complimage_{}_{}x_{}.csv'.format(used_model, addition, args.accelerations[0],
+                                                                           loss_name))
     if used_transform == 'rotation':
-        df_all_angles.to_csv('./results/all_angles_loss_{}_{}_{}x_{}.csv'.format(used_model, addition, args.accelerations[0], loss_name))
+        df_all_angles.to_csv(
+            './results/all_angles_loss_{}_{}_{}x_{}.csv'.format(used_model, addition, args.accelerations[0], loss_name))
     print('end of function')
-
-
 
 
 def build_args():
@@ -318,7 +328,7 @@ def build_args():
     parser.add_argument(
         "--used_model_array",
         nargs='+',
-        default=['varnet'] #['unet', 'varnet']
+        default=['varnet']  # ['unet', 'varnet']
     )
 
     parser.add_argument(
@@ -346,6 +356,7 @@ def build_args():
 
     args = parser.parse_args()
     return args
+
 
 if __name__ == '__main__':
     args = build_args()

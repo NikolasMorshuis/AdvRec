@@ -40,17 +40,18 @@ class AdvRotation:
     def create_init_affine_transformation(self, batch_size=None):
         if batch_size is None:
             batch_size = self.batch_size
-        rot_angle = (2*torch.rand(batch_size, 1,
-                        dtype=torch.float32, device=self.device)-1) * self.rot_ratio*180
+        rot_angle = (2 * torch.rand(batch_size, 1,
+                                    dtype=torch.float32, device=self.device) - 1) * self.rot_ratio * 180
         return rot_angle
 
     def transform(self, data, angle=None):
         if angle is None:
             angle = self.param
         original_shape = data.shape[-2:]
-        data = TF.resize(data, size=[original_shape[0] * 2, original_shape[1] * 2], interpolation=TF.InterpolationMode.BICUBIC)
+        data = TF.resize(data, size=[original_shape[0] * 2, original_shape[1] * 2],
+                         interpolation=TF.InterpolationMode.BICUBIC)
         shape_before_pad = data.shape[-2:]
-        py, px = self._get_affine_padding_size(data, angle, 1, [0,0])
+        py, px = self._get_affine_padding_size(data, angle, 1, [0, 0])
         data = TF.pad(data, padding=[py, px], padding_mode='reflect')
         data = TF.rotate(data, angle.item(), interpolation=TF.InterpolationMode.BILINEAR)
         data = TF.center_crop(data, shape_before_pad)
@@ -66,18 +67,19 @@ class AdvRotation:
         """
         h, w = image.shape[-2:]
         corners = [
-            [-h/2, -w/2, 1.],
-            [-h/2, w/2, 1.],
-            [h/2, w/2, 1.],
-            [h/2, -w/2, 1.]
+            [-h / 2, -w / 2, 1.],
+            [-h / 2, w / 2, 1.],
+            [h / 2, w / 2, 1.],
+            [h / 2, -w / 2, 1.]
         ]
-        mx = torch.tensor(TF._get_inverse_affine_matrix([0.0, 0.0], -angle, [0, 0], scale, [-s for s in shear])).reshape(2,3)
-        corners = torch.cat([torch.tensor(c).reshape(3,1) for c in corners], dim=1)
+        mx = torch.tensor(
+            TF._get_inverse_affine_matrix([0.0, 0.0], -angle, [0, 0], scale, [-s for s in shear])).reshape(2, 3)
+        corners = torch.cat([torch.tensor(c).reshape(3, 1) for c in corners], dim=1)
         tr_corners = torch.matmul(mx, corners)
         all_corners = torch.cat([tr_corners, corners[:2, :]], dim=1)
         bounding_box = all_corners.amax(dim=1) - all_corners.amin(dim=1)
-        px = torch.clip(torch.floor((bounding_box[0] - h) / 2), min=0.0, max=h-1)
-        py = torch.clip(torch.floor((bounding_box[1] - w) / 2),  min=0.0, max=w-1)
+        px = torch.clip(torch.floor((bounding_box[0] - h) / 2), min=0.0, max=h - 1)
+        py = torch.clip(torch.floor((bounding_box[1] - w) / 2), min=0.0, max=w - 1)
         return int(py.item()), int(px.item())
 
     def forward(self, data):
