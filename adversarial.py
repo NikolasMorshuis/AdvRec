@@ -11,9 +11,8 @@ import pandas as pd
 import pytorch_lightning as pl
 from fastmri.data.subsample import create_mask_for_mask_type
 from fastmri.pl_modules import FastMriDataModule, UnetModule, VarNetModule
-from fastmri_examples.unet.run_pretrained_unet_inference import download_model
 
-from utils.utils import Transform_kspace_to_modelinput, error_per_angle
+from utils.utils import Transform_kspace_to_modelinput, error_per_angle, download_model
 
 from augmentor.adv_rotation import AdvRotation
 from augmentor.kspace_noise import KSpaceNoise

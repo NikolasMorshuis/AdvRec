@@ -109,9 +109,8 @@ class PerturbationFinder(object):
                                                     data_range=target_ssim.max() - target_ssim.min())
                 mse_loss = mean_squared_error(target_ssim_relreg, output_center_relreg)
 
-                print('loss: {}'.format(ssim_loss))
                 angle = transform.param
-                print('angle ', angle)
+                print('angle: {}, loss: {}'.format(np.round(angle.item(), 3), np.round(ssim_loss, 4)))
                 angle_array.append(angle)
                 loss_array.append(ssim_loss)
                 psnr_array.append(psnr_loss)

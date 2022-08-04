@@ -12,6 +12,9 @@ import torch
 import unittest
 import fastmri
 from typing import Dict, NamedTuple, Optional, Sequence, Tuple, Union
+from tqdm import tqdm
+import requests
+
 
 def orig_kspace_to_images(kspace_torch, dim=(-2, -1)):
     kspace_shifted = torch.fft.ifftshift(kspace_torch, dim=dim)
@@ -46,20 +49,20 @@ def complex_to_channels(image):
     image_real = torch.real(image)
     image_compl = torch.imag(image)
     new_image = torch.concat([image_real, image_compl], dim=1)
-    return(new_image)
+    return (new_image)
 
 
 def channels_to_complex(image):
     image_size = image.size()
-    new_image = torch.complex(image[:, 0:image_size[1]//2, :, :], image[:, image_size[1]//2:, :, :])
+    new_image = torch.complex(image[:, 0:image_size[1] // 2, :, :], image[:, image_size[1] // 2:, :, :])
     return new_image
 
 
 def normalize(
-    data: torch.Tensor,
-    mean: Union[float, torch.Tensor],
-    stddev: Union[float, torch.Tensor],
-    eps: Union[float, torch.Tensor] = 0.0,
+        data: torch.Tensor,
+        mean: Union[float, torch.Tensor],
+        stddev: Union[float, torch.Tensor],
+        eps: Union[float, torch.Tensor] = 0.0,
 ) -> torch.Tensor:
     """
     Normalize the given tensor.
@@ -79,7 +82,7 @@ def normalize(
 
 
 def normalize_instance(
-    data: torch.Tensor, eps: Union[float, torch.Tensor] = 0.0
+        data: torch.Tensor, eps: Union[float, torch.Tensor] = 0.0
 ) -> Tuple[torch.Tensor, Union[torch.Tensor], Union[torch.Tensor]]:
     """
     Normalize the given tensor  with instance norm/
@@ -106,7 +109,7 @@ def load_args_from_config(args):
     if config_file.exists():
         with config_file.open('r') as f:
             d = yaml.safe_load(f)
-            for k,v in d.items():
+            for k, v in d.items():
                 setattr(args, k, v)
     else:
         print('Config file does not exist.')
@@ -127,17 +130,17 @@ def get_elements_with_pathology(df, examples, one_per_patient=False):
     patients_with_patholo = []
     fname_now = None
     indices_tmp = []
-    append_indices=False
+    append_indices = False
     for i in range(len(examples)):
-        if i == len(examples)-1:
-            append_indices=True
+        if i == len(examples) - 1:
+            append_indices = True
         file_path, slice, metadata = examples[i]
         fname = PurePath(file_path).parts[-1].split('.')[0]
 
-        df_tmp = df[df.iloc[:,0]==fname]
+        df_tmp = df[df.iloc[:, 0] == fname]
 
-        if fname in df_tmp.iloc[:,0].values:
-            if slice in df_tmp.iloc[:,1].values:
+        if fname in df_tmp.iloc[:, 0].values:
+            if slice in df_tmp.iloc[:, 1].values:
                 if fname_now is None:
                     fname_now = fname
                 elif fname_now == fname:
@@ -151,19 +154,19 @@ def get_elements_with_pathology(df, examples, one_per_patient=False):
         if append_indices:
             if len(indices_tmp) >= 1:
                 if one_per_patient:
-                    middle_index = len(indices_tmp)//2
-                    indices_array += indices_tmp[middle_index:middle_index+1]
+                    middle_index = len(indices_tmp) // 2
+                    indices_array += indices_tmp[middle_index:middle_index + 1]
                 else:
                     indices_array += indices_tmp
                 indices_tmp = []
-            append_indices=False
+            append_indices = False
     return indices_array, np.unique(patients_with_patholo)
 
 
 def get_index_in_score_table(score, network_name, example_list, best_or_worst='worst'):
     df_score = pd.read_csv('./data_frames/{}_scores_{}.csv'.format(score, network_name), index_col=0)
     percent_of_orig = df_score.iloc[:, -2:].mean(1) / df_score.iloc[:, 0]
-    best_scores_with_noise = percent_of_orig>percent_of_orig.quantile(0.95)
+    best_scores_with_noise = percent_of_orig > percent_of_orig.quantile(0.95)
     worst_scores_with_noise = percent_of_orig < percent_of_orig.quantile(0.05)
     worst_cases = percent_of_orig[worst_scores_with_noise]
     best_cases = percent_of_orig[best_scores_with_noise]
@@ -204,7 +207,6 @@ class Transform_kspace_to_modelinput():
             return kspace, None, None
 
 
-
 def error_per_angle(angles, ssim_loss, psnr_loss, mse_loss, target_angles):
     """
     Here we want to get a list of angles (e.g. [0,1,2,3,4,5] and the corresponding loss
@@ -217,12 +219,12 @@ def error_per_angle(angles, ssim_loss, psnr_loss, mse_loss, target_angles):
     psnr_worst_score_array = []
     mse_worst_score_array = []
     for an in target_angles:
-        smaller_angles = np.where(np.abs(angles)<an+epsilon, True, False)
-        zero_out_outside_mask = np.where(np.abs(angles)<an+epsilon, mse_loss, 0)
-        worst_score_mse = np.max(zero_out_outside_mask)#np.max(np.array(mse_loss)[smaller_angles])
+        smaller_angles = np.where(np.abs(angles) < an + epsilon, True, False)
+        zero_out_outside_mask = np.where(np.abs(angles) < an + epsilon, mse_loss, 0)
+        worst_score_mse = np.max(zero_out_outside_mask)  # np.max(np.array(mse_loss)[smaller_angles])
         index_worst_score = np.argmax(zero_out_outside_mask)
-        #worst_score_ssim = np.min(np.array(ssim_loss)[smaller_angles])
-        #worst_score_psnr = np.min(np.array(psnr_loss)[smaller_angles])
+        # worst_score_ssim = np.min(np.array(ssim_loss)[smaller_angles])
+        # worst_score_psnr = np.min(np.array(psnr_loss)[smaller_angles])
         worst_score_ssim = ssim_loss[index_worst_score]
         worst_score_psnr = psnr_loss[index_worst_score]
         worst_score_array_ssim.append(worst_score_ssim)
@@ -239,18 +241,22 @@ def orig_kspace_to_images(kspace_torch):
     return images
 
 
-class TestAffineMatrix(unittest.TestCase):
-    def test_get_elements_with_pathology(self):
-        # here we have some trouble with .h5 and not .h5 in the fname, it changes
-        df = pd.read_csv('./.annotation_cache/knee640500fb.csv')
-        examples = np.load('./.annotation_cache/dataset_val_examples.npy', allow_pickle=True)
-        indices = get_elements_with_pathology(df, examples, True)
-        fname_array = []
-        for i in indices:
-            file_path, slice, metadata = examples[i]
-            fname = PurePath(file_path).parts[-1].split('.')[0]
-            fname_array.append(fname)
-        _, counts = np.unique(fname_array, return_counts=True)
-        assert(np.max(counts)==1)
-        assert(np.min(counts)==1)
-        print('ok')
+def download_model(url, fname):
+    """ from fastmri_examples in the fastmri repo: https://github.com/facebookresearch/fastMRI"""
+    response = requests.get(url, timeout=10, stream=True)
+
+    chunk_size = 1 * 1024 * 1024  # 1 MB chunks
+    total_size_in_bytes = int(response.headers.get("content-length", 0))
+    progress_bar = tqdm(
+        desc="Downloading state_dict",
+        total=total_size_in_bytes,
+        unit="iB",
+        unit_scale=True,
+    )
+
+    with open(fname, "wb") as fh:
+        for chunk in response.iter_content(chunk_size):
+            progress_bar.update(len(chunk))
+            fh.write(chunk)
+
+    progress_bar.close()
