@@ -159,7 +159,6 @@ def main():
         for i in range(len(index_array)):
             data = annotated_slice_dataset.__getitem__(index_array[i])
             num_low_frequencies = data.num_low_frequencies
-            # load the sensitivity map:
             acq = data.acq  # With this parameter we know where the kspace was sampled and where not!
             fname = data.fname
             patient_name = fname.split('.')[0]

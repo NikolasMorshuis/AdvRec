@@ -1,6 +1,7 @@
 # Adversarial Robustness of MR Image Reconstruction under Realistic Perturbations
 
-This repository contains the code for our MICCAI Workshop paper "Adversarial Robustness of MR Image Reconstruction under Realistic Perturbations".
+This repository contains the code for the paper "Adversarial Robustness of MR Image Reconstruction under Realistic Perturbations" 
+that will be presented in the MICCAI-2022 workshop: "Machine Learning for Medical Image Reconstruction".
 With this code, you can find realistic perturbations (k-space noise and rotation-angles) that can significantly 
 alter the annotated anomalies visible in the MRI-scan.
 
@@ -53,3 +54,17 @@ automatically downloaded if you run the code. In contrast to the smaller version
 in this code are trained on both training and validation set. Therefore, when evaluating on the validation set, the model 
 has already seen the datapoints, which might affect the adversarial robustness. However, our experiments have shown that the model
 is still susceptible to our perturbations and hence we keep this option for now because of the easy availablility of the fastMRI-models.
+
+
+# References
+
+If you find the code useful, please consider citing
+```bib
+@misc{Morshuis2022AdvRec,
+  title = {Adversarial Robustness of MR Image Reconstruction under Realistic Perturbations},
+  author = {Morshuis, Jan Nikolas and Gatidis, Sergios and Hein, Matthias and Baumgartner, Christian F.},  
+  publisher = {arXiv},
+  year = {2022},   
+  url = {https://arxiv.org/abs/2208.03161},
+}
+```
